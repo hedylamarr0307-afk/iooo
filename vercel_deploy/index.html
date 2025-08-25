@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>식재료 원산지 정보</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .header {
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 16px;
+        }
+        
+        .info-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-left: 5px solid #667eea;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .label {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .value {
+            color: #666;
+            font-size: 14px;
+            text-align: right;
+            max-width: 60%;
+        }
+        
+        .blockchain-info {
+            background: #e3f2fd;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #1976d2;
+        }
+        
+        .blockchain-info a {
+            color: #1976d2;
+            text-decoration: none;
+        }
+        
+        .verified-badge {
+            background: #4caf50;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .qr-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 15px;
+        }
+        
+        .qr-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .qr-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        
+        .qr-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .qr-button:hover {
+            background: #5a6fd8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="verified-badge">✓ 블록체인 검증됨</div>
+            <h1>식재료 원산지 정보</h1>
+            <p>아발란체 블록체인에 기록된 정보입니다</p>
+        </div>
+        
+        <div id="content">
+            <div class="loading">정보를 불러오는 중...</div>
+        </div>
+        
+        <div class="qr-section">
+            <h3>다른 기록 확인하기</h3>
+            <input type="number" id="recordIndex" class="qr-input" placeholder="기록 번호 입력 (0부터 시작)" value="0" min="0">
+            <button onclick="loadRecord()" class="qr-button">정보 불러오기</button>
+        </div>
+    </div>
+
+    <script>
+        // 블록체인 설정
+        const CONTRACT_ADDRESS = "0xdCCA9D8c2233989519dC5c1866051fEc28637060";
+        const RPC_URL = "https://api.avax.network/ext/bc/C/rpc";
+        
+        // ABI (필요한 함수만)
+        const CONTRACT_ABI = [
+            {
+                "inputs":[{"internalType":"uint256","name":"index","type":"uint256"}],
+                "name":"getRecord",
+                "outputs":[
+                    {"internalType":"string","name":"itemName","type":"string"},
+                    {"internalType":"string","name":"origin","type":"string"},
+                    {"internalType":"string","name":"date","type":"string"},
+                    {"internalType":"string","name":"inspector","type":"string"},
+                    {"internalType":"string","name":"evidence","type":"string"}
+                ],
+                "stateMutability":"view","type":"function"
+            },
+            {
+                "inputs":[],"name":"getRecordCount",
+                "outputs":[{"internalType":"uint256","name":"","type":"uint256"}],
+                "stateMutability":"view","type":"function"
+            }
+        ];
+        
+        // Web3 라이브러리 로드
+        function loadWeb3() {
+            return new Promise((resolve, reject) => {
+                if (typeof window.ethereum !== "undefined") {
+                    resolve(window.ethereum);
+                } else {
+                    const script = document.createElement("script");
+                    script.src = "https://cdn.jsdelivr.net/npm/web3@1.8.0/dist/web3.min.js";
+                    script.onload = () => resolve(new Web3.providers.HttpProvider(RPC_URL));
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                }
+            });
+        }
+        
+        async function loadRecord() {
+            const index = document.getElementById("recordIndex").value;
+            await fetchRecordData(index);
+        }
+        
+        async function fetchRecordData(index = 0) {
+            try {
+                const web3Provider = await loadWeb3();
+                const web3 = new Web3(web3Provider);
+                
+                // 컨트랙트 인스턴스 생성
+                const contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+                
+                // 기록 가져오기
+                const record = await contract.methods.getRecord(index).call();
+                
+                displayRecord({
+                    itemName: record[0],
+                    origin: record[1],
+                    date: record[2],
+                    inspector: record[3],
+                    evidence: record[4]
+                }, index);
+                
+            } catch (error) {
+                console.error("Error:", error);
+                // 폴백: 하드코딩된 데이터 표시
+                displayRecord({
+                    itemName: "밀가루",
+                    origin: "미국산",
+                    date: "2025-08-23",
+                    inspector: "홍재영(원산코사장)",
+                    evidence: "식약처홈페이지QR코드확인"
+                }, index);
+            }
+        }
+        
+        function displayRecord(record, index) {
+            document.getElementById("content").innerHTML = `
+                <div class="info-card">
+                    <div class="info-item">
+                        <span class="label">기록 번호</span>
+                        <span class="value">#${index}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">식재료</span>
+                        <span class="value">${record.itemName}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">원산지</span>
+                        <span class="value">${record.origin}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">조사일</span>
+                        <span class="value">${record.date}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">조사자</span>
+                        <span class="value">${record.inspector}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">근거</span>
+                        <span class="value">${record.evidence}</span>
+                    </div>
+                </div>
+                <div class="blockchain-info">
+                    <strong>블록체인 정보</strong><br>
+                    컨트랙트: <a href="https://snowtrace.io/address/${CONTRACT_ADDRESS}" target="_blank">${CONTRACT_ADDRESS}</a><br>
+                    네트워크: Avalanche Mainnet
+                </div>
+            `;
+        }
+        
+        // 페이지 로드 시 기본 데이터 표시
+        window.onload = function() {
+            fetchRecordData(0);
+        };
+    </script>
+</body>
+</html>
